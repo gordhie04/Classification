@@ -9,9 +9,9 @@ A collection of small PyTorch projects exploring image classification and the be
 - **Performance:** ~55–60% training accuracy
 - **Purpose:** Baseline model for understanding optimization, training dynamics, and the limitations of non-convolutional architectures on image data.
 
-### 2. CIFAR-10 ResNet-18 (in progress)
+### 2. CIFAR-10 ResNet-50 (in progress)
 - **Dataset:** CIFAR-10
-- **Architecture:** ResNet-18 (convolutional encoder with linear classification head)
+- **Architecture:** ResNet-50 (convolutional encoder with linear classification head)
 - **Purpose:** Learn structured image representations suitable for analyzing embedding stability under realistic perturbations such as illumination shifts, blur, noise, and partial occlusion.
 
 ## Planned Analysis
