@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import random_split, DataLoader
 from torchvision.utils import make_grid
 import torch.nn as nn
+import numpy as np
 
 # Check if GPU is available and set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -40,17 +41,6 @@ train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, pin_me
 val_dataloader = DataLoader(val_dataset, batch_size=64, shuffle=False, pin_memory=True)
 test_dataloader = DataLoader(test_dataset, batch_size=64, shuffle=False, pin_memory=True)
 
-def show_image(dl):
-    for image, label in dl:
-        image = image * 0.5 + 0.5
-        fig, ax = plt.subplots(figsize=(10,10))
-        ax.imshow(make_grid(image, 10).permute(1, 2, 0))
-        break
-
-# Uncomment to visualize training images
-# show_image(train_dataloader)
-# plt.show()
-
 class ResidualBlock(nn.Module):
     def __init__(self, in_channel, out_channel, stride=1, downsample=None):
         super().__init__()
@@ -81,10 +71,10 @@ class ResnetX(nn.Module):
         super().__init__()
         self.inplanes = 64
         self.conv1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),  # Fixed for CIFAR10
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU())
-        self.maxpool = nn.Identity()  # Skip maxpool for CIFAR10
+        self.maxpool = nn.Identity()
         self.layer0 = self._make_layer(block, 64, layers[0], stride=1)
         self.layer1 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer2 = self._make_layer(block, 256, layers[2], stride=2)
@@ -133,6 +123,11 @@ model = ResnetX(ResidualBlock, [3, 4, 6, 3]).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=0.001, momentum=0.9)
 
+# Initialize tracking lists
+train_losses = []
+val_accuracies = []
+epochs_list = []
+
 # Train the model
 total_step = len(train_dataloader)
 print(f"Starting training for {num_epochs} epochs...")
@@ -162,6 +157,9 @@ for epoch in range(num_epochs):
             print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{total_step}], Loss: {loss.item():.4f}')
     
     avg_loss = running_loss / total_step
+    train_losses.append(avg_loss)
+    epochs_list.append(epoch + 1)
+    
     print(f'Epoch [{epoch+1}/{num_epochs}] Complete, Average Loss: {avg_loss:.4f}')
     
     # Validation
@@ -179,6 +177,7 @@ for epoch in range(num_epochs):
             correct += (predicted == labels).sum().item()
         
         val_accuracy = 100 * correct / total
+        val_accuracies.append(val_accuracy)
         print(f'Validation Accuracy: {val_accuracy:.2f}%\n')
 
 print("Training complete!")
@@ -201,3 +200,78 @@ with torch.no_grad():
 
 test_accuracy = 100 * test_correct / test_total
 print(f'Final Test Accuracy: {test_accuracy:.2f}%')
+
+# Plot training metrics
+plt.figure(figsize=(12, 4))
+
+# Plot 1: Training Loss
+plt.subplot(1, 2, 1)
+plt.plot(epochs_list, train_losses, 'b-o', linewidth=2, markersize=6)
+plt.xlabel('Epoch', fontsize=12)
+plt.ylabel('Loss', fontsize=12)
+plt.title('Training Loss Over Epochs', fontsize=14, fontweight='bold')
+plt.grid(True, alpha=0.3)
+
+# Plot 2: Validation Accuracy
+plt.subplot(1, 2, 2)
+plt.plot(epochs_list, val_accuracies, 'g-o', linewidth=2, markersize=6)
+plt.xlabel('Epoch', fontsize=12)
+plt.ylabel('Accuracy (%)', fontsize=12)
+plt.title('Validation Accuracy Over Epochs', fontsize=14, fontweight='bold')
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('training_metrics.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+# Sample Predictions Visualization
+print("Generating sample predictions...")
+
+# CIFAR10 class names
+class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
+               'dog', 'frog', 'horse', 'ship', 'truck']
+
+# Get a batch of test images
+dataiter = iter(test_dataloader)
+images, labels = next(dataiter)
+images = images.to(device)
+labels = labels.to(device)
+
+# Get predictions
+model.eval()
+with torch.no_grad():
+    outputs = model(images)
+    _, predicted = torch.max(outputs, 1)
+
+# Move back to CPU and denormalize
+images = images.cpu()
+images = images * 0.5 + 0.5
+
+# Plot 16 samples
+fig, axes = plt.subplots(4, 4, figsize=(12, 12))
+for idx, ax in enumerate(axes.flat):
+    if idx < len(images):
+        # Convert from CHW to HWC format
+        img = images[idx].numpy().transpose(1, 2, 0)
+        img = np.clip(img, 0, 1)
+        
+        ax.imshow(img)
+        
+        pred_label = class_names[predicted[idx]]
+        true_label = class_names[labels[idx]]
+        
+        # Color: green if correct, red if wrong
+        color = 'green' if predicted[idx] == labels[idx] else 'red'
+        ax.set_title(f'Pred: {pred_label}\nTrue: {true_label}', 
+                     color=color, fontsize=10, fontweight='bold')
+        ax.axis('off')
+
+plt.suptitle('Sample Predictions (Green=Correct, Red=Wrong)', 
+             fontsize=14, fontweight='bold', y=0.995)
+plt.tight_layout()
+plt.savefig('sample_predictions.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+print("\nAll visualizations saved!")
+print(f"- training_metrics.png")
+print(f"- sample_predictions.png")
